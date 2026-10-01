@@ -37,7 +37,7 @@ SeleniumBase supports Monochrome browser-authenticated playback fallback, MP3Pho
 
 The package does not download a browser or driver at runtime. SeleniumBase creates its required patched `uc_driver` under `~/Library/Caches/MusicGrabber` on macOS or `${XDG_CACHE_HOME:-$HOME/.cache}/musicgrabber` on Linux. Override this with `MUSICGRABBER_SELENIUM_CACHE_DIR`.
 
-SeleniumBase UC mode is intentionally headed. Linux runs it inside Xvfb. On macOS, MusicGrabber must run from an interactive graphical login session so Chrome can access WindowServer.
+SeleniumBase UC mode is intentionally headed. Linux runs it inside Xvfb. On macOS, MusicGrabber must run from an interactive graphical login session so Chrome can access WindowServer. Keep the login session's real `HOME`; a synthetic home directory can prevent Chrome's renderer from navigating.
 
 ## Checks
 

@@ -48,7 +48,7 @@ When updating Nixpkgs:
 2. Confirm ChromeDriver archives exist for `mac-arm64`, `linux64`, and `linux-arm64`.
 3. Update `seleniumVersion` and all three fixed-output hashes together.
 4. Build the Selenium check on both Linux architectures.
-5. Verify a real UC/CDP launch from an interactive Apple Silicon macOS session.
+5. Verify a real UC/CDP launch from an interactive Apple Silicon macOS session using the login session's real `HOME`.
 6. Confirm the check rejects all SeleniumBase runtime download attempts.
 
 Do not reuse the Playwright revision-1208 browser unless an exact matching ChromeDriver exists for every supported architecture.
