@@ -37,7 +37,7 @@ The wrapper uses local-first defaults:
 - HTTPS is disabled.
 - Remote configuration and remote file management are disabled.
 - Automatic version checks are disabled because Nix owns the version.
-- New state and downloaded files use a restrictive umask.
+- New state and downloaded files use a restrictive umask, and the default configuration is kept at mode `0600`.
 
 The YAML configuration and command-line arguments take precedence over these defaults. Do not configure the web interface to listen on a public address.
 
@@ -52,7 +52,7 @@ nix run .#slskd -- \
   --no-share-scan
 ```
 
-On macOS this creates `~/Library/Application Support/slskd/`. Restrict the generated configuration before editing it:
+On macOS this creates `~/Library/Application Support/slskd/`. The wrapper creates the configuration with mode `0600`; verify that restriction before editing it:
 
 ```console
 chmod 600 "$HOME/Library/Application Support/slskd/slskd.yml"
