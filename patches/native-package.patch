@@ -1,15 +1,54 @@
---- a/constants.py
-+++ b/constants.py
-@@ -239,5 +239,5 @@
- # (.fNNN, .part, .temp) and dedup numbering like " (1)".
- MAX_FILENAME_BYTES = 255         # Per-component byte limit (NAME_MAX)
- FILENAME_STEM_RESERVE_BYTES = 40 # Headroom kept free below NAME_MAX for the stem
--COOKIES_FILE = Path("/data/cookies.txt")  # yt-dlp cookies file path
-+COOKIES_FILE = Path(os.getenv("COOKIES_FILE", "/data/cookies.txt"))  # yt-dlp cookies file path
- AUDIO_EXTENSIONS = ['.flac', '.opus', '.m4a', '.webm', '.mp3', '.ogg']
+diff --git a/amazonalbum.py b/amazonalbum.py
+index 0f19b8b..041bf36 100644
+--- a/amazonalbum.py
++++ b/amazonalbum.py
+@@ -28,9 +28,10 @@ rather than a confident wrong answer.
+ import json
+ import os
+ import re
+-import shutil
+ import time
+ 
++from selenium_runtime import browser_options
++
+ # "Play Dai Dai by Shakira & Burna Boy on Amazon Music Unlimited".  The album
+ # is GREEDY and the artist lazy, so the split lands on the LAST " by " rather
+ # than the first: an album called "Poems by Heart" keeps its preposition
+@@ -73,20 +74,6 @@ def parse_album_title(title: str) -> tuple[str | None, str | None]:
+     return (artist or None), (album or None)
+ 
+ 
+-def _browser_options() -> dict:
+-    options = {
+-        "uc": True,
+-        "test": True,
+-        "xvfb": True,
+-        "locale": "en",
+-        "chromium_arg": "no-sandbox,disable-dev-shm-usage",
+-    }
+-    if not shutil.which("google-chrome") and shutil.which("chromium"):
+-        options["use_chromium"] = True
+-        options["binary_location"] = shutil.which("chromium")
+-    return options
+-
+-
+ def main() -> None:
+     url = os.environ.get("AMAZON_ALBUM_URL", "").strip()
+     if not url:
+@@ -105,7 +92,7 @@ def main() -> None:
+         return
+ 
+     try:
+-        with SB(**_browser_options()) as sb:
++        with SB(**browser_options()) as sb:
+             sb.activate_cdp_mode(url)
+             time.sleep(3)
+ 
+diff --git a/app.py b/app.py
+index 25865a3..99f164c 100644
 --- a/app.py
 +++ b/app.py
-@@ -289,6 +289,8 @@
+@@ -289,6 +289,8 @@ def _is_volume_mounted() -> bool:
      it's likely a mounted volume. This helps detect misconfigured setups
      where users forgot to mount their music directory.
      """
@@ -18,3 +57,319 @@
      try:
          configured_music_dir = Path(get_setting("music_dir", str(MUSIC_DIR)))
          root_stat = os.stat("/")
+diff --git a/constants.py b/constants.py
+index 2698dc1..5232609 100644
+--- a/constants.py
++++ b/constants.py
+@@ -239,7 +239,7 @@ MAX_FILENAME_LENGTH = 200        # Maximum characters in sanitised filenames
+ # (.fNNN, .part, .temp) and dedup numbering like " (1)".
+ MAX_FILENAME_BYTES = 255         # Per-component byte limit (NAME_MAX)
+ FILENAME_STEM_RESERVE_BYTES = 40 # Headroom kept free below NAME_MAX for the stem
+-COOKIES_FILE = Path("/data/cookies.txt")  # yt-dlp cookies file path
++COOKIES_FILE = Path(os.getenv("COOKIES_FILE", "/data/cookies.txt"))  # yt-dlp cookies file path
+ AUDIO_EXTENSIONS = ['.flac', '.opus', '.m4a', '.webm', '.mp3', '.ogg']
+ 
+ # Directory names that library scans must never walk into. NAS and desktop
+diff --git a/monochrome_browser.py b/monochrome_browser.py
+index 533041b..4bf1539 100644
+--- a/monochrome_browser.py
++++ b/monochrome_browser.py
+@@ -86,13 +86,26 @@ def _broker_environment() -> dict[str, str]:
+     """Return the small, non-secret environment the browser child requires."""
+-    browser_home = Path("/tmp") / f"musicgrabber-browser-{os.getuid()}"
+-    browser_home.mkdir(mode=0o700, parents=True, exist_ok=True)
++    if sys.platform == "darwin":
++        browser_home = Path.home()
++    else:
++        browser_home = Path("/tmp") / f"musicgrabber-browser-{os.getuid()}"
++        browser_home.mkdir(mode=0o700, parents=True, exist_ok=True)
+-    return {
++    environment = {
+         "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+         "HOME": str(browser_home),
+         "LANG": os.environ.get("LANG", "C.UTF-8"),
+         "MONOCHROME_WEB_URL": MONOCHROME_WEB_URL,
+         "MONOCHROME_BROWSER_AUTH_TIMEOUT": str(MONOCHROME_BROWSER_AUTH_TIMEOUT),
+     }
++    for key in (
++        "MUSICGRABBER_SELENIUM_BROWSER",
++        "MUSICGRABBER_SELENIUM_DRIVER_SOURCE",
++        "MUSICGRABBER_SELENIUM_DRIVER_DIR",
++        "MUSICGRABBER_SELENIUM_VERSION",
++        "SE_OFFLINE",
++    ):
++        if key in os.environ:
++            environment[key] = os.environ[key]
++    return environment
+ 
+ 
+ def _start_broker_locked() -> tuple[subprocess.Popen, queue.Queue[str | None]]:
+@@ -138,12 +151,15 @@ def _stop_broker_locked() -> None:
+         except (BrokenPipeError, OSError):
+             pass
+     if process.poll() is None:
+-        process.terminate()
+         try:
+             process.wait(timeout=5)
+         except subprocess.TimeoutExpired:
+-            process.kill()
+-            process.wait(timeout=5)
++            process.terminate()
++            try:
++                process.wait(timeout=5)
++            except subprocess.TimeoutExpired:
++                process.kill()
++                process.wait(timeout=5)
+
+
+ def stop_browser_broker() -> None:
+diff --git a/monochrome_browser_auth.py b/monochrome_browser_auth.py
+index b9c1982..77fa4b1 100644
+--- a/monochrome_browser_auth.py
++++ b/monochrome_browser_auth.py
+@@ -7,10 +7,11 @@ alive between tracks; a browser crash remains isolated from the download worker.
+ 
+ import json
+ import os
+-import shutil
+ import sys
+ import time
+ 
++from selenium_runtime import browser_options
++
+ 
+ RESULT_PREFIX = "MUSICGRABBER_MONOCHROME_AUTH="
+ JWT_STORAGE_KEY = "unified-playback-turnstile-jwt"
+@@ -86,18 +87,7 @@ def main() -> None:
+         return
+ 
+     try:
+-        browser_options = {
+-            "uc": True,
+-            "test": True,
+-            "xvfb": True,
+-            "locale": "en",
+-            "chromium_arg": "no-sandbox,disable-dev-shm-usage",
+-        }
+-        if not shutil.which("google-chrome") and shutil.which("chromium"):
+-            browser_options["use_chromium"] = True
+-            browser_options["binary_location"] = shutil.which("chromium")
+-
+-        with SB(**browser_options) as sb:
++        with SB(**browser_options()) as sb:
+             sb.activate_cdp_mode(web_url)
+             for line in sys.stdin:
+                 try:
+diff --git a/mp3phoenix.py b/mp3phoenix.py
+index 63b50a7..7cde83d 100644
+--- a/mp3phoenix.py
++++ b/mp3phoenix.py
+@@ -46,6 +46,10 @@ def _browser_subprocess_env() -> dict[str, str]:
+     allowed = (
+         "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR",
+         "XDG_CACHE_HOME", "XDG_CONFIG_HOME",
++        "MUSICGRABBER_SELENIUM_BROWSER",
++        "MUSICGRABBER_SELENIUM_DRIVER_SOURCE",
++        "MUSICGRABBER_SELENIUM_DRIVER_DIR",
++        "MUSICGRABBER_SELENIUM_VERSION", "SE_OFFLINE",
+     )
+     env = {key: os.environ[key] for key in allowed if key in os.environ}
+     env["PYTHONUNBUFFERED"] = "1"
+diff --git a/mp3phoenix_browser.py b/mp3phoenix_browser.py
+index 9b66aa2..fe77592 100644
+--- a/mp3phoenix_browser.py
++++ b/mp3phoenix_browser.py
+@@ -2,10 +2,11 @@
+ 
+ import json
+ import os
+-import shutil
+ import sys
+ import time
+ 
++from selenium_runtime import browser_options
++
+ 
+ RESULT_PREFIX = "MUSICGRABBER_MP3PHOENIX="
+ BASE_URL = "https://mp3phoenix.net"
+@@ -21,6 +22,8 @@ def _wait_for_access(sb, timeout: int) -> None:
+     while time.monotonic() < deadline:
+         title = str(sb.cdp.evaluate("document.title") or "").lower()
+         body = str(sb.cdp.evaluate("document.body ? document.body.innerText : ''") or "").lower()
++        if "attention required" in title or "sorry, you have been blocked" in body:
++            raise RuntimeError("MP3Phoenix blocked this network through Cloudflare")
+         challenged = "just a moment" in title or "verify you are human" in body
+         if not challenged and sb.cdp.evaluate("document.readyState") == "complete":
+             return
+@@ -63,18 +66,11 @@ def main() -> None:
+         return
+ 
+     try:
+-        options = {
+-            "uc": True,
+-            "test": True,
+-            "xvfb": True,
+-            "locale": "en",
+-            "chromium_arg": "no-sandbox,disable-dev-shm-usage",
+-        }
+-        if not shutil.which("google-chrome") and shutil.which("chromium"):
+-            options["use_chromium"] = True
+-            options["binary_location"] = shutil.which("chromium")
+-
+-        with SB(**options) as sb:
++        with SB(**browser_options()) as sb:
+             sb.activate_cdp_mode(BASE_URL)
+-            _wait_for_access(sb, timeout)
++            try:
++                _wait_for_access(sb, timeout)
++            except Exception as exc:
++                _emit({"success": False, "error": f"MP3Phoenix browser failed: {exc}"})
++                return
+             request = json.loads(sys.stdin.readline())
+diff --git a/selenium_runtime.py b/selenium_runtime.py
+new file mode 100644
+index 0000000..25a858e
+--- /dev/null
++++ b/selenium_runtime.py
+@@ -0,0 +1,141 @@
++"""Native-package SeleniumBase browser and driver configuration."""
++
++import os
++import platform
++import shutil
++import stat
++import subprocess
++import tempfile
++from pathlib import Path
++
++
++def _version_output(executable: Path) -> str:
++    result = subprocess.run(
++        [str(executable), "--version"],
++        check=True,
++        capture_output=True,
++        text=True,
++        timeout=15,
++    )
++    return result.stdout.strip()
++
++
++def _driver_is_usable(driver: Path, expected_version: str) -> bool:
++    if not driver.is_file():
++        return False
++
++    try:
++        from seleniumbase.undetected.patcher import Patcher
++
++        return (
++            Patcher(executable_path=str(driver)).is_binary_patched()
++            and expected_version in _version_output(driver)
++        )
++    except Exception:
++        return False
++
++
++def _prepare_driver(source: Path, directory: Path, expected_version: str) -> Path:
++    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
++    directory.chmod(0o700)
++    driver = directory / "uc_driver"
++    if _driver_is_usable(driver, expected_version):
++        return directory
++
++    descriptor, temporary_name = tempfile.mkstemp(prefix=".uc_driver.", dir=directory)
++    os.close(descriptor)
++    temporary = Path(temporary_name)
++
++    try:
++        shutil.copyfile(source, temporary)
++        temporary.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
++
++        from seleniumbase.undetected.patcher import Patcher
++
++        patcher = Patcher(executable_path=str(temporary))
++        patcher.patch()
++        if not patcher.is_binary_patched():
++            raise RuntimeError("SeleniumBase did not patch ChromeDriver")
++
++        if platform.system() == "Darwin":
++            subprocess.run(
++                ["/usr/bin/codesign", "--force", "--sign", "-", str(temporary)],
++                check=True,
++                capture_output=True,
++                text=True,
++            )
++
++        if expected_version not in _version_output(temporary):
++            raise RuntimeError(
++                f"Packaged ChromeDriver does not report {expected_version}"
++            )
++
++        os.replace(temporary, driver)
++    finally:
++        temporary.unlink(missing_ok=True)
++
++    return directory
++
++
++def browser_options() -> dict:
++    options = {
++        "uc": True,
++        "test": True,
++        "xvfb": True,
++        "locale": "en",
++        "chromium_arg": "no-sandbox,disable-dev-shm-usage",
++    }
++
++    browser_value = os.environ.get("MUSICGRABBER_SELENIUM_BROWSER", "").strip()
++    driver_source_value = os.environ.get(
++        "MUSICGRABBER_SELENIUM_DRIVER_SOURCE", ""
++    ).strip()
++    driver_directory_value = os.environ.get(
++        "MUSICGRABBER_SELENIUM_DRIVER_DIR", ""
++    ).strip()
++    expected_version = os.environ.get(
++        "MUSICGRABBER_SELENIUM_VERSION", ""
++    ).strip()
++
++    packaged_values = (
++        browser_value,
++        driver_source_value,
++        driver_directory_value,
++        expected_version,
++    )
++    if any(packaged_values) and not all(packaged_values):
++        raise RuntimeError("Packaged Selenium configuration is incomplete")
++
++    if all(packaged_values):
++        browser = Path(browser_value)
++        driver_source = Path(driver_source_value)
++        driver_directory = Path(driver_directory_value)
++
++        if not browser.is_file():
++            raise RuntimeError(f"Packaged Selenium browser does not exist: {browser}")
++        if not driver_source.is_file():
++            raise RuntimeError(f"Packaged ChromeDriver does not exist: {driver_source}")
++        if expected_version not in _version_output(browser):
++            raise RuntimeError(f"Packaged browser does not report {expected_version}")
++
++        from seleniumbase.core.browser_launcher import override_driver_dir
++
++        override_driver_dir(
++            str(_prepare_driver(driver_source, driver_directory, expected_version))
++        )
++        work_directory = driver_directory.parent / "work"
++        work_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
++        work_directory.chmod(0o700)
++        os.chdir(work_directory)
++        options["use_chromium"] = True
++        options["binary_location"] = str(browser)
++        options["driver_version"] = "keep"
++        return options
++
++    chrome = shutil.which("google-chrome")
++    chromium = shutil.which("chromium")
++    if not chrome and chromium:
++        options["use_chromium"] = True
++        options["binary_location"] = chromium
++
++    return options

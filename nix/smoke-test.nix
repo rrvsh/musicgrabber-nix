@@ -60,6 +60,7 @@
           MUSIC_DIR="$test_root/music" \
           LISTEN_ADDR=127.0.0.1 \
           LISTEN_PORT="$port" \
+          MONOCHROME_BROWSER_FALLBACK_ENABLED=false \
             ${musicgrabber}/bin/musicgrabber >"$test_root/server.log" 2>&1 &
           server_pid=$!
 

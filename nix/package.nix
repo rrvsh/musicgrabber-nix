@@ -25,11 +25,111 @@
             lib.composeManyExtensions [
               pyproject-build-systems.overlays.wheel
               (workspace.mkPyprojectOverlay { sourcePreference = "wheel"; })
+              (
+                final: previous:
+                builtins.listToAttrs (
+                  map
+                    (name: {
+                      inherit name;
+                      value = previous.${name}.overrideAttrs (old: {
+                        nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.setuptools ];
+                        passthru =
+                          (old.passthru or { })
+                          //
+                            lib.optionalAttrs
+                              (builtins.elem name [
+                                "mouseinfo"
+                                "pyautogui"
+                              ])
+                              {
+                                dependencies = removeAttrs old.passthru.dependencies [ "python3-xlib" ];
+                              };
+                      });
+                    })
+                    [
+                      "mouseinfo"
+                      "pyautogui"
+                      "pygetwindow"
+                      "pyrect"
+                      "pyscreeze"
+                      "python3-xlib"
+                      "pytweening"
+                    ]
+                )
+              )
             ]
           );
-      pythonEnv = pythonSet.mkVirtualEnv "musicgrabber-python-env" workspace.deps.default;
+      pythonEnvBase = pythonSet.mkVirtualEnv "musicgrabber-python-env-base" workspace.deps.default;
+      pythonEnv =
+        if pkgs.stdenv.hostPlatform.isLinux then
+          pkgs.symlinkJoin {
+            name = "musicgrabber-python-env";
+            paths = [
+              pythonEnvBase
+              pkgs.python312Packages.tkinter
+            ];
+          }
+        else
+          pythonEnvBase;
 
       playwrightComponents = pkgs.playwright-driver.components;
+      seleniumVersion = "153.0.8010.12";
+      seleniumDriverSources = {
+        aarch64-darwin = {
+          url = "https://storage.googleapis.com/chrome-for-testing-public/${seleniumVersion}/mac-arm64/chromedriver-mac-arm64.zip";
+          hash = "sha256-/ipGRAIKk+eWFNVHB0kyuesMAO00uf7A4dh+LubSSIY=";
+          directory = "chromedriver-mac-arm64";
+        };
+        x86_64-linux = {
+          url = "https://storage.googleapis.com/chrome-for-testing-public/${seleniumVersion}/linux64/chromedriver-linux64.zip";
+          hash = "sha256-t9X3wSD3gn81OLQW4IuCQY63AvGLaAwYPwQRyNfy32k=";
+          directory = "chromedriver-linux64";
+        };
+        aarch64-linux = {
+          url = "https://storage.googleapis.com/chrome-for-testing-public/${seleniumVersion}/linux-arm64/chromedriver-linux-arm64.zip";
+          hash = "sha256-cTOhuFfydK4o899SjO39GzX+s69m7hW1lsAHVXk51QI=";
+          directory = "chromedriver-linux-arm64";
+        };
+      };
+      seleniumDriverSource = seleniumDriverSources.${system};
+      seleniumDriver = pkgs.stdenv.mkDerivation {
+        pname = "musicgrabber-chromedriver";
+        version = seleniumVersion;
+        src = pkgs.fetchurl {
+          inherit (seleniumDriverSource) url hash;
+        };
+        sourceRoot = seleniumDriverSource.directory;
+        nativeBuildInputs = [
+          pkgs.unzip
+        ]
+        ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.autoPatchelfHook ];
+        buildInputs = lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+          pkgs.dbus
+          pkgs.glib
+          pkgs.nspr
+          pkgs.nss
+          pkgs.stdenv.cc.cc.lib
+          pkgs.libxcb
+        ];
+        dontConfigure = true;
+        dontBuild = true;
+        dontStrip = pkgs.stdenv.hostPlatform.isDarwin;
+        installPhase = ''
+          runHook preInstall
+          install -Dm755 chromedriver "$out/bin/chromedriver"
+          runHook postInstall
+        '';
+      };
+      seleniumBrowser =
+        assert pkgs.playwright-driver.browsersJSON.chromium.browserVersion == seleniumVersion;
+        playwrightComponents.chromium;
+      seleniumBrowserBinary =
+        {
+          aarch64-darwin = "${seleniumBrowser}/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing";
+          x86_64-linux = "${seleniumBrowser}/chrome-linux64/chrome";
+          aarch64-linux = "${seleniumBrowser}/chrome-linux-arm64/chrome";
+        }
+        .${system};
       playwrightSources = {
         chromium = {
           x86_64-linux = {
@@ -145,21 +245,43 @@
           pkgs.coreutils
           pkgs.deno
           pkgs.ffmpeg-headless
+        ]
+        ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+          pkgs.xauth
+          pkgs.xvfb
         ];
         passthru = {
-          inherit application browsers pythonEnv;
+          inherit
+            application
+            browsers
+            pythonEnv
+            seleniumBrowser
+            seleniumBrowserBinary
+            seleniumDriver
+            seleniumVersion
+            ;
         };
         derivationArgs = { inherit version; };
         text = ''
           umask 077
           export PATH="${pythonEnv}/bin:$PATH"
 
+          platform="$(uname -s)"
+
           if [[ -n "''${XDG_DATA_HOME:-}" ]]; then
             default_state_dir="$XDG_DATA_HOME/musicgrabber"
-          elif [[ "$(uname -s)" == "Darwin" ]]; then
+          elif [[ "$platform" == "Darwin" ]]; then
             default_state_dir="$HOME/Library/Application Support/MusicGrabber"
           else
             default_state_dir="$HOME/.local/share/musicgrabber"
+          fi
+
+          if [[ -n "''${XDG_CACHE_HOME:-}" ]]; then
+            default_cache_dir="$XDG_CACHE_HOME/musicgrabber"
+          elif [[ "$platform" == "Darwin" ]]; then
+            default_cache_dir="$HOME/Library/Caches/MusicGrabber"
+          else
+            default_cache_dir="$HOME/.cache/musicgrabber"
           fi
 
           state_dir="''${MUSICGRABBER_STATE_DIR:-$default_state_dir}"
@@ -171,7 +293,12 @@
           export PLAYWRIGHT_BROWSERS_PATH="''${PLAYWRIGHT_BROWSERS_PATH:-${browsers}}"
           export SSL_CERT_FILE="''${SSL_CERT_FILE:-${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt}"
           export CURL_CA_BUNDLE="''${CURL_CA_BUNDLE:-$SSL_CERT_FILE}"
-          export MONOCHROME_BROWSER_FALLBACK_ENABLED="''${MONOCHROME_BROWSER_FALLBACK_ENABLED:-false}"
+          export MUSICGRABBER_SELENIUM_BROWSER="''${MUSICGRABBER_SELENIUM_BROWSER:-${seleniumBrowserBinary}}"
+          export MUSICGRABBER_SELENIUM_DRIVER_SOURCE="''${MUSICGRABBER_SELENIUM_DRIVER_SOURCE:-${seleniumDriver}/bin/chromedriver}"
+          export MUSICGRABBER_SELENIUM_DRIVER_DIR="''${MUSICGRABBER_SELENIUM_DRIVER_DIR:-''${MUSICGRABBER_SELENIUM_CACHE_DIR:-$default_cache_dir}/seleniumbase-${seleniumVersion}}"
+          export MUSICGRABBER_SELENIUM_VERSION="''${MUSICGRABBER_SELENIUM_VERSION:-${seleniumVersion}}"
+          export SE_OFFLINE="''${SE_OFFLINE:-true}"
+          export MONOCHROME_BROWSER_FALLBACK_ENABLED="''${MONOCHROME_BROWSER_FALLBACK_ENABLED:-true}"
           export SOURCE_MP3PHOENIX_ENABLED="''${SOURCE_MP3PHOENIX_ENABLED:-false}"
           export YTDLP_AUTO_UPDATE="''${YTDLP_AUTO_UPDATE:-false}"
           export MUSICGRABBER_NATIVE_PACKAGE=true

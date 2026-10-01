@@ -38,13 +38,28 @@ Only update Playwright as a coordinated set:
 
 Do not update only the Python wheel or only the browser assets. Keep one Nixpkgs input and override its browser component derivations with `overrideAttrs` when the locked Python wheel requires older browser assets.
 
+## Update Selenium browser and driver
+
+SeleniumBase uses a separate exact-version browser and driver pair.
+
+When updating Nixpkgs:
+
+1. Read `pkgs.playwright-driver.browsersJSON.chromium.browserVersion`.
+2. Confirm ChromeDriver archives exist for `mac-arm64`, `linux64`, and `linux-arm64`.
+3. Update `seleniumVersion` and all three fixed-output hashes together.
+4. Build the Selenium check on both Linux architectures.
+5. Verify a real UC/CDP launch from an interactive Apple Silicon macOS session using the login session's real `HOME`.
+6. Confirm the check rejects all SeleniumBase runtime download attempts.
+
+Do not reuse the Playwright revision-1208 browser unless an exact matching ChromeDriver exists for every supported architecture.
+
 ## Validate
 
 Run:
 
 ```console
-nix fmt -- .
-nix flake check
+nix fmt -- --ci .
+nix flake check --all-systems
 nix build
 nix run .#smoke-test
 MUSICGRABBER_SMOKE_NETWORK=1 nix run .#smoke-test
