@@ -38,11 +38,29 @@
               import seleniumbase
               import uvicorn
               import app
+              import mp3phoenix_browser
               from constants import COOKIES_FILE
               from selenium_runtime import browser_options
+              from types import SimpleNamespace
 
               assert str(COOKIES_FILE).endswith("state/cookies.txt")
               assert app._is_volume_mounted() is True
+
+              blocked_page = SimpleNamespace(
+                  cdp=SimpleNamespace(
+                      evaluate=lambda script: (
+                          "Attention Required! | Cloudflare"
+                          if script == "document.title"
+                          else ""
+                      )
+                  )
+              )
+              try:
+                  mp3phoenix_browser._wait_for_access(blocked_page, 20)
+              except RuntimeError as exc:
+                  assert str(exc) == "MP3Phoenix blocked this network through Cloudflare"
+              else:
+                  raise AssertionError("MP3Phoenix Cloudflare block was not detected")
               PY
               touch "$out"
             '';
