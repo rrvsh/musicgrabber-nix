@@ -1,3 +1,49 @@
+diff --git a/amazonalbum.py b/amazonalbum.py
+index 0f19b8b..041bf36 100644
+--- a/amazonalbum.py
++++ b/amazonalbum.py
+@@ -28,9 +28,10 @@ rather than a confident wrong answer.
+ import json
+ import os
+ import re
+-import shutil
+ import time
+ 
++from selenium_runtime import browser_options
++
+ # "Play Dai Dai by Shakira & Burna Boy on Amazon Music Unlimited".  The album
+ # is GREEDY and the artist lazy, so the split lands on the LAST " by " rather
+ # than the first: an album called "Poems by Heart" keeps its preposition
+@@ -73,20 +74,6 @@ def parse_album_title(title: str) -> tuple[str | None, str | None]:
+     return (artist or None), (album or None)
+ 
+ 
+-def _browser_options() -> dict:
+-    options = {
+-        "uc": True,
+-        "test": True,
+-        "xvfb": True,
+-        "locale": "en",
+-        "chromium_arg": "no-sandbox,disable-dev-shm-usage",
+-    }
+-    if not shutil.which("google-chrome") and shutil.which("chromium"):
+-        options["use_chromium"] = True
+-        options["binary_location"] = shutil.which("chromium")
+-    return options
+-
+-
+ def main() -> None:
+     url = os.environ.get("AMAZON_ALBUM_URL", "").strip()
+     if not url:
+@@ -105,7 +92,7 @@ def main() -> None:
+         return
+ 
+     try:
+-        with SB(**_browser_options()) as sb:
++        with SB(**browser_options()) as sb:
+             sb.activate_cdp_mode(url)
+             time.sleep(3)
+ 
 diff --git a/app.py b/app.py
 index c7ab76e..e4647ba 100644
 --- a/app.py
@@ -22,5 +68,57 @@ index 90261b7..e9398e6 100644
 -COOKIES_FILE = Path("/data/cookies.txt")  # yt-dlp cookies file path
 +COOKIES_FILE = Path(os.getenv("COOKIES_FILE", "/data/cookies.txt"))  # yt-dlp cookies file path
  AUDIO_EXTENSIONS = ['.flac', '.opus', '.m4a', '.webm', '.mp3', '.ogg']
-
+ 
  # Directory names that library scans must never walk into. NAS and desktop
+diff --git a/mp3phoenix.py b/mp3phoenix.py
+index 75ff276..50cbe9e 100644
+--- a/mp3phoenix.py
++++ b/mp3phoenix.py
+@@ -47,6 +47,10 @@ def _browser_subprocess_env() -> dict[str, str]:
+     allowed = (
+         "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR",
+         "XDG_CACHE_HOME", "XDG_CONFIG_HOME",
++        "MUSICGRABBER_SELENIUM_BROWSER",
++        "MUSICGRABBER_SELENIUM_DRIVER_SOURCE",
++        "MUSICGRABBER_SELENIUM_DRIVER_DIR",
++        "MUSICGRABBER_SELENIUM_VERSION", "SE_OFFLINE",
+     )
+     env = {key: os.environ[key] for key in allowed if key in os.environ}
+     env["PYTHONUNBUFFERED"] = "1"
+diff --git a/mp3phoenix_browser.py b/mp3phoenix_browser.py
+index 9b66aa2..924d8b8 100644
+--- a/mp3phoenix_browser.py
++++ b/mp3phoenix_browser.py
+@@ -2,10 +2,11 @@
+ 
+ import json
+ import os
+-import shutil
+ import sys
+ import time
+ 
++from selenium_runtime import browser_options
++
+ 
+ RESULT_PREFIX = "MUSICGRABBER_MP3PHOENIX="
+ BASE_URL = "https://mp3phoenix.net"
+@@ -63,18 +64,7 @@ def main() -> None:
+         return
+ 
+     try:
+-        options = {
+-            "uc": True,
+-            "test": True,
+-            "xvfb": True,
+-            "locale": "en",
+-            "chromium_arg": "no-sandbox,disable-dev-shm-usage",
+-        }
+-        if not shutil.which("google-chrome") and shutil.which("chromium"):
+-            options["use_chromium"] = True
+-            options["binary_location"] = shutil.which("chromium")
+-
+-        with SB(**options) as sb:
++        with SB(**browser_options()) as sb:
+             sb.activate_cdp_mode(BASE_URL)
+             _wait_for_access(sb, timeout)
+             request = json.loads(sys.stdin.readline())
