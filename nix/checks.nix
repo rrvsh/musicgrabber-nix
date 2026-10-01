@@ -7,10 +7,27 @@
     }:
     let
       musicgrabber = self'.packages.musicgrabber;
+      slskd = self'.packages.slskd;
     in
     {
       checks = {
         package = musicgrabber;
+        slskd-package = slskd;
+
+        slskd-version =
+          pkgs.runCommand "slskd-version-check"
+            {
+              nativeBuildInputs = [
+                pkgs.gnugrep
+                slskd
+              ];
+            }
+            ''
+              export HOME="$TMPDIR/home"
+              export DOTNET_BUNDLE_EXTRACT_BASE_DIR="$TMPDIR/dotnet"
+              mkdir -p "$HOME" "$DOTNET_BUNDLE_EXTRACT_BASE_DIR"
+              slskd --version | grep -F "0.26.0" > "$out"
+            '';
 
         application =
           pkgs.runCommand "musicgrabber-application-check"
