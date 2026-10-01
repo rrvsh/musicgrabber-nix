@@ -1,0 +1,20 @@
+--- a/constants.py
++++ b/constants.py
+@@ -239,5 +239,5 @@
+ # (.fNNN, .part, .temp) and dedup numbering like " (1)".
+ MAX_FILENAME_BYTES = 255         # Per-component byte limit (NAME_MAX)
+ FILENAME_STEM_RESERVE_BYTES = 40 # Headroom kept free below NAME_MAX for the stem
+-COOKIES_FILE = Path("/data/cookies.txt")  # yt-dlp cookies file path
++COOKIES_FILE = Path(os.getenv("COOKIES_FILE", "/data/cookies.txt"))  # yt-dlp cookies file path
+ AUDIO_EXTENSIONS = ['.flac', '.opus', '.m4a', '.webm', '.mp3', '.ogg']
+--- a/app.py
++++ b/app.py
+@@ -289,6 +289,8 @@
+     it's likely a mounted volume. This helps detect misconfigured setups
+     where users forgot to mount their music directory.
+     """
++    if os.getenv("MUSICGRABBER_NATIVE_PACKAGE") == "true":
++        return True
+     try:
+         configured_music_dir = Path(get_setting("music_dir", str(MUSIC_DIR)))
+         root_stat = os.stat("/")
