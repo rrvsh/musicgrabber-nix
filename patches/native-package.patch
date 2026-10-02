@@ -1,15 +1,8 @@
---- a/constants.py
-+++ b/constants.py
-@@ -239,5 +239,5 @@
- # (.fNNN, .part, .temp) and dedup numbering like " (1)".
- MAX_FILENAME_BYTES = 255         # Per-component byte limit (NAME_MAX)
- FILENAME_STEM_RESERVE_BYTES = 40 # Headroom kept free below NAME_MAX for the stem
--COOKIES_FILE = Path("/data/cookies.txt")  # yt-dlp cookies file path
-+COOKIES_FILE = Path(os.getenv("COOKIES_FILE", "/data/cookies.txt"))  # yt-dlp cookies file path
- AUDIO_EXTENSIONS = ['.flac', '.opus', '.m4a', '.webm', '.mp3', '.ogg']
+diff --git a/app.py b/app.py
+index c7ab76e..e4647ba 100644
 --- a/app.py
 +++ b/app.py
-@@ -289,6 +289,8 @@
+@@ -283,6 +283,8 @@ def _is_volume_mounted() -> bool:
      it's likely a mounted volume. This helps detect misconfigured setups
      where users forgot to mount their music directory.
      """
@@ -18,3 +11,16 @@
      try:
          configured_music_dir = Path(get_setting("music_dir", str(MUSIC_DIR)))
          root_stat = os.stat("/")
+diff --git a/constants.py b/constants.py
+index 90261b7..e9398e6 100644
+--- a/constants.py
++++ b/constants.py
+@@ -239,7 +239,7 @@ MAX_FILENAME_LENGTH = 200        # Maximum characters in sanitised filenames
+ # (.fNNN, .part, .temp) and dedup numbering like " (1)".
+ MAX_FILENAME_BYTES = 255         # Per-component byte limit (NAME_MAX)
+ FILENAME_STEM_RESERVE_BYTES = 40 # Headroom kept free below NAME_MAX for the stem
+-COOKIES_FILE = Path("/data/cookies.txt")  # yt-dlp cookies file path
++COOKIES_FILE = Path(os.getenv("COOKIES_FILE", "/data/cookies.txt"))  # yt-dlp cookies file path
+ AUDIO_EXTENSIONS = ['.flac', '.opus', '.m4a', '.webm', '.mp3', '.ogg']
+
+ # Directory names that library scans must never walk into. NAS and desktop

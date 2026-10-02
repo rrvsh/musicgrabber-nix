@@ -1,6 +1,6 @@
 # musicgrabber-nix
 
-Standalone Nix package for [MusicGrabber](https://gitlab.com/g33kphr33k/musicgrabber), pinned to v4.2.3.
+Standalone Nix package for [MusicGrabber](https://gitlab.com/g33kphr33k/musicgrabber), pinned to v4.2.4.
 
 ## Run
 
@@ -31,15 +31,14 @@ The portable package includes:
 - Chromaprint's `fpcalc`
 - yt-dlp and Deno
 
-SeleniumBase is currently excluded. The following features are therefore unavailable or reduced:
+SeleniumBase is currently excluded. The following features are therefore unavailable:
 
-- Monochrome browser-authenticated fallback
 - MP3Phoenix browser clearance
 - Amazon album extraction
 
 > **TODO:** Restore SeleniumBase support as soon as possible. Its current exclusion is temporary technical debt, not the intended final package boundary. A complete implementation must package and validate the coordinated browser, driver, display, Xauth, and Tk/PyAutoGUI runtime on every supported platform without runtime downloads.
 
-Spotify playlist extraction uses Playwright and is supported. Monochrome's direct qbdlx route remains available without its browser fallback.
+Spotify playlist extraction uses Playwright and is supported. Monochrome uses its plain tracks API and does not require SeleniumBase, qbdlx, an account, or an API key.
 
 ## Checks
 

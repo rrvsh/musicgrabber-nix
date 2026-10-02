@@ -122,8 +122,8 @@
         src = pkgs.fetchFromGitLab {
           owner = "g33kphr33k";
           repo = "musicgrabber";
-          rev = "7953eb6abe74c070899826d6e2352075ae7710ab";
-          hash = "sha256-a1E4dgg9j2rOsmN2y4wVCIbrXVSja3qwysYrKR0QGLc=";
+          rev = "668caee91446610b2ff2496147ebd072639afba0";
+          hash = "sha256-7wxguGtCioSMsB/+9OQ9H4qo8WNxcXuDXXO0yGVq4Jw=";
         };
         patches = [ (projectRoot + "/patches/native-package.patch") ];
         installPhase = ''
@@ -171,7 +171,6 @@
           export PLAYWRIGHT_BROWSERS_PATH="''${PLAYWRIGHT_BROWSERS_PATH:-${browsers}}"
           export SSL_CERT_FILE="''${SSL_CERT_FILE:-${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt}"
           export CURL_CA_BUNDLE="''${CURL_CA_BUNDLE:-$SSL_CERT_FILE}"
-          export MONOCHROME_BROWSER_FALLBACK_ENABLED="''${MONOCHROME_BROWSER_FALLBACK_ENABLED:-false}"
           export SOURCE_MP3PHOENIX_ENABLED="''${SOURCE_MP3PHOENIX_ENABLED:-false}"
           export YTDLP_AUTO_UPDATE="''${YTDLP_AUTO_UPDATE:-false}"
           export MUSICGRABBER_NATIVE_PACKAGE=true
