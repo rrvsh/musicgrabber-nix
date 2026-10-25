@@ -11,7 +11,7 @@ dependencies = [
   "mutagen~=1.47.0",
   "playwright~=1.58.0",
   "seleniumbase>=4.54,<5",
-  "apprise~=1.9.3",
+  "apprise~=1.11.0",
   "bcrypt~=4.2.0",
   "pycryptodome~=3.23.0",
 ]
