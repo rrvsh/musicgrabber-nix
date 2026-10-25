@@ -1,7 +1,10 @@
 {
   perSystem = { pkgs, ... }: {
     devShells.default = pkgs.mkShell {
-      packages = [ pkgs.uv ];
+      packages = [
+        pkgs.python312
+        pkgs.uv
+      ];
     };
 
     formatter = pkgs.nixfmt-tree;
