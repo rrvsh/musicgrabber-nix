@@ -62,10 +62,10 @@ index 0f19b8b..96c925f 100644
  
 diff --git a/platforms/selenium_runtime.py b/platforms/selenium_runtime.py
 new file mode 100644
-index 0000000..25a858e
+index 0000000..3ef164f
 --- /dev/null
 +++ b/platforms/selenium_runtime.py
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,143 @@
 +"""Native-package SeleniumBase browser and driver configuration."""
 +
 +import os
@@ -153,6 +153,8 @@ index 0000000..25a858e
 +        "locale": "en",
 +        "chromium_arg": "no-sandbox,disable-dev-shm-usage",
 +    }
++    if platform.system() == "Darwin":
++        options["window_position"] = "-10000,-10000"
 +
 +    browser_value = os.environ.get("MUSICGRABBER_SELENIUM_BROWSER", "").strip()
 +    driver_source_value = os.environ.get(
