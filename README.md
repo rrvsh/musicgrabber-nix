@@ -1,6 +1,6 @@
 # musicgrabber-nix
 
-Standalone Nix package for [MusicGrabber](https://gitlab.com/g33kphr33k/musicgrabber), pinned to v4.2.4.
+Standalone Nix package for [MusicGrabber](https://gitlab.com/g33kphr33k/musicgrabber), pinned to v4.4.3.
 
 ## Run
 
@@ -27,18 +27,17 @@ The portable package includes:
 
 - Python 3.12 dependencies locked with uv
 - Chromium and Chromium headless shell for Playwright
+- SeleniumBase with an exact Chromium and ChromeDriver pair
+- Xvfb and Xauth on Linux
 - FFmpeg and ffprobe
 - Chromaprint's `fpcalc`
 - yt-dlp and Deno
 
-SeleniumBase is currently excluded. The following features are therefore unavailable:
+SeleniumBase supports Amazon album extraction. The package does not download a browser or driver at runtime. SeleniumBase creates its required patched `uc_driver` under `~/Library/Caches/MusicGrabber` on macOS or `${XDG_CACHE_HOME:-$HOME/.cache}/musicgrabber` on Linux. Override this with `MUSICGRABBER_SELENIUM_CACHE_DIR`.
 
-- MP3Phoenix browser clearance
-- Amazon album extraction
+SeleniumBase UC mode is intentionally headed. Linux runs it inside Xvfb. On macOS, MusicGrabber must run from an interactive graphical login session so Chrome can access WindowServer.
 
-> **TODO:** Restore SeleniumBase support as soon as possible. Its current exclusion is temporary technical debt, not the intended final package boundary. A complete implementation must package and validate the coordinated browser, driver, display, Xauth, and Tk/PyAutoGUI runtime on every supported platform without runtime downloads.
-
-Spotify playlist extraction uses Playwright and is supported. Monochrome uses its plain tracks API and does not require SeleniumBase, qbdlx, an account, or an API key.
+Spotify playlist extraction uses Playwright and is supported. Monochrome uses its plain tracks API and does not require SeleniumBase, an account, or an API key.
 
 ## Checks
 
@@ -47,7 +46,7 @@ nix flake check
 nix build
 ```
 
-The flake checks the complete package, Python imports, application startup, and native-package patch behavior. Behavioral smoke tests cover runtime tools and browser-backed workflows without duplicating them as standalone flake checks.
+The flake checks the complete package, Python imports, application startup, native-package patch behavior, browser/driver version coordination, and SeleniumBase UC/CDP launch behavior on both Linux architectures. Darwin checks imports and exact browser/driver versions; a full Darwin UC launch requires an interactive WindowServer session and is validated manually.
 
 Outputs and checks support `x86_64-linux`, `aarch64-linux`, and `aarch64-darwin`.
 
@@ -71,7 +70,9 @@ The networked test uses MusicGrabber's own three-track Spotify QA playlist and t
 
 The flake uses flake-parts, import-tree, and small modules under `nix/`. It has one Nixpkgs input. The current Playwright browser component derivations are overridden with the coordinated Chromium revision 1208 sources required by the locked Python Playwright 1.58 wheel. Current Nixpkgs still provides the browser runtime libraries and FFmpeg revision 1011.
 
-The package version comes from `pyproject.toml`. The application source is pinned independently by commit and content hash. A small patch makes the cookies path configurable and disables a Docker-specific volume warning for the native wrapper.
+Playwright remains pinned to its revision-1208 Chromium 145 assets. SeleniumBase uses current Nixpkgs' separate Chromium 153.0.8010.12 bundle with the exact matching ChromeDriver on every supported architecture. These cannot be combined because no matching Chromium 145 Linux ARM64 ChromeDriver is published.
+
+The package version comes from `pyproject.toml`. The application source is pinned independently by commit and content hash. Native-package patches make the cookies path configurable, disable a Docker-specific volume warning, and connect Amazon album extraction to the packaged Selenium browser and driver.
 
 See [`docs/UPDATING.md`](docs/UPDATING.md) for the update workflow.
 
