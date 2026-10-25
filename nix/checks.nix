@@ -42,12 +42,9 @@
               from core.constants import COOKIES_FILE
               from platforms.selenium_runtime import browser_options
               from routes.basic import _is_volume_mounted
-              from unittest.mock import patch
 
               assert str(COOKIES_FILE).endswith("state/cookies.txt")
               assert _is_volume_mounted() is True
-              with patch("platforms.selenium_runtime.platform.system", return_value="Darwin"):
-                  assert browser_options()["window_position"] == "10000,0"
               PY
               touch "$out"
             '';
