@@ -47,7 +47,7 @@
               assert str(COOKIES_FILE).endswith("state/cookies.txt")
               assert _is_volume_mounted() is True
               with patch("platforms.selenium_runtime.platform.system", return_value="Darwin"):
-                  assert browser_options()["window_position"] == "-10000,-10000"
+                  assert browser_options()["window_position"] == "10000,0"
               PY
               touch "$out"
             '';
