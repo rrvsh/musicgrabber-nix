@@ -12,22 +12,25 @@ index c857ab2..5a82dfd 100644
  
  # Directory names that library scans must never walk into. NAS and desktop
 diff --git a/platforms/amazonalbum.py b/platforms/amazonalbum.py
-index 0f19b8b..041bf36 100644
+index 0f19b8b..96c925f 100644
 --- a/platforms/amazonalbum.py
 +++ b/platforms/amazonalbum.py
-@@ -28,9 +28,10 @@ rather than a confident wrong answer.
+@@ -28,9 +28,13 @@ rather than a confident wrong answer.
  import json
  import os
  import re
 -import shutil
  import time
  
-+from selenium_runtime import browser_options
++try:
++    from platforms.selenium_runtime import browser_options
++except ModuleNotFoundError:
++    from selenium_runtime import browser_options
 +
  # "Play Dai Dai by Shakira & Burna Boy on Amazon Music Unlimited".  The album
  # is GREEDY and the artist lazy, so the split lands on the LAST " by " rather
  # than the first: an album called "Poems by Heart" keeps its preposition
-@@ -73,20 +74,6 @@ def parse_album_title(title: str) -> tuple[str | None, str | None]:
+@@ -73,20 +77,6 @@ def parse_album_title(title: str) -> tuple[str | None, str | None]:
      return (artist or None), (album or None)
  
  
@@ -48,7 +51,7 @@ index 0f19b8b..041bf36 100644
  def main() -> None:
      url = os.environ.get("AMAZON_ALBUM_URL", "").strip()
      if not url:
-@@ -105,7 +92,7 @@ def main() -> None:
+@@ -105,7 +95,7 @@ def main() -> None:
          return
  
      try:
@@ -57,24 +60,11 @@ index 0f19b8b..041bf36 100644
              sb.activate_cdp_mode(url)
              time.sleep(3)
  
-diff --git a/routes/basic.py b/routes/basic.py
-index 79b5a19..f15d816 100644
---- a/routes/basic.py
-+++ b/routes/basic.py
-@@ -104,6 +104,8 @@ def _is_volume_mounted() -> bool:
-     it's likely a mounted volume. This helps detect misconfigured setups
-     where users forgot to mount their music directory.
-     """
-+    if os.getenv("MUSICGRABBER_NATIVE_PACKAGE") == "true":
-+        return True
-     try:
-         configured_music_dir = Path(get_setting("music_dir", str(MUSIC_DIR)))
-         root_stat = os.stat("/")
-diff --git a/selenium_runtime.py b/selenium_runtime.py
+diff --git a/platforms/selenium_runtime.py b/platforms/selenium_runtime.py
 new file mode 100644
 index 0000000..25a858e
 --- /dev/null
-+++ b/selenium_runtime.py
++++ b/platforms/selenium_runtime.py
 @@ -0,0 +1,141 @@
 +"""Native-package SeleniumBase browser and driver configuration."""
 +
@@ -217,3 +207,16 @@ index 0000000..25a858e
 +        options["binary_location"] = chromium
 +
 +    return options
+diff --git a/routes/basic.py b/routes/basic.py
+index 79b5a19..f15d816 100644
+--- a/routes/basic.py
++++ b/routes/basic.py
+@@ -104,6 +104,8 @@ def _is_volume_mounted() -> bool:
+     it's likely a mounted volume. This helps detect misconfigured setups
+     where users forgot to mount their music directory.
+     """
++    if os.getenv("MUSICGRABBER_NATIVE_PACKAGE") == "true":
++        return True
+     try:
+         configured_music_dir = Path(get_setting("music_dir", str(MUSIC_DIR)))
+         root_stat = os.stat("/")
