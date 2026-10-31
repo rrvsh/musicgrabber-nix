@@ -1,0 +1,215 @@
+diff --git a/tests/test_slskd_search.py b/tests/test_slskd_search.py
+index 0ed51fa..e2b603e 100644
+--- a/tests/test_slskd_search.py
++++ b/tests/test_slskd_search.py
+@@ -44,6 +44,16 @@ class _FakeResponse:
+         return self._payload
+ 
+ 
++class _AuthRetryClient:
++    def __init__(self, statuses):
++        self.statuses = iter(statuses)
++        self.tokens = []
++
++    def post(self, _url, headers, **_kwargs):
++        self.tokens.append(headers["Authorization"])
++        return _FakeResponse({}, next(self.statuses))
++
++
+ class _FakeClient:
+     """Just enough slskd API to walk search_slskd from end to end."""
+ 
+@@ -105,6 +115,35 @@ def slskd_ready(monkeypatch):
+     return _install
+ 
+ 
++def test_authenticated_request_refreshes_a_rejected_token_once(monkeypatch):
++    tokens = iter(["stale-token", "fresh-token"])
++    client = _AuthRetryClient([401, 200])
++    slskd._slskd_token_cache[("http://slskd.test", "user")] = (
++        "stale-token", float("inf")
++    )
++
++    monkeypatch.setattr(slskd, "get_slskd_token", lambda: next(tokens))
++    monkeypatch.setattr(
++        slskd,
++        "get_setting",
++        lambda name: {
++            "slskd_url": "http://slskd.test",
++            "slskd_user": "user",
++        }[name],
++    )
++
++    response = slskd._slskd_request(
++        client,
++        "post",
++        "http://slskd.test/api/v0/searches",
++        json={"searchText": "Fleetwood Mac - Dreams"},
++    )
++
++    assert response.status_code == 200
++    assert client.tokens == ["Bearer stale-token", "Bearer fresh-token"]
++    assert ("http://slskd.test", "user") not in slskd._slskd_token_cache
++
++
+ def test_a_good_match_actually_reaches_the_caller(slskd_ready, capsys):
+     """The reported bug: hundreds of files in, nothing out."""
+     slskd_ready([_flac_hit()])
+diff --git a/toolkit/slskd.py b/toolkit/slskd.py
+index aafaf1b..6d99983 100644
+--- a/toolkit/slskd.py
++++ b/toolkit/slskd.py
+@@ -87,6 +87,36 @@ def get_slskd_token(user_id: str | None = None) -> Optional[str]:
+     return None
+ 
+ 
++def _slskd_request(client, method: str, url: str, **kwargs):
++    """Make an authenticated request, retrying once after a rejected token."""
++    token = get_slskd_token()
++    if not token:
++        raise RuntimeError("slskd authentication failed")
++
++    request = getattr(client, method)
++    response = request(
++        url,
++        headers={"Authorization": f"Bearer {token}"},
++        **kwargs,
++    )
++    if response.status_code != 401:
++        return response
++
++    slskd_url = get_setting("slskd_url")
++    slskd_user = get_setting("slskd_user")
++    _slskd_token_cache.pop((slskd_url, slskd_user), None)
++
++    token = get_slskd_token()
++    if not token:
++        return response
++
++    return request(
++        url,
++        headers={"Authorization": f"Bearer {token}"},
++        **kwargs,
++    )
++
++
+ def parse_slskd_quality(file_info: dict) -> tuple[str, int]:
+     """
+     Parse quality info from slskd file response.
+@@ -725,13 +755,12 @@ def _run_slskd_search(query: str, timeout_secs: int) -> list[dict]:
+     slskd_url = get_setting("slskd_url")
+ 
+     try:
+-        headers = {"Authorization": f"Bearer {token}"}
+-
+         with httpx.Client(timeout=TIMEOUT_SLSKD_API) as client:
+             # Start search
+-            search_response = client.post(
++            search_response = _slskd_request(
++                client,
++                "post",
+                 f"{slskd_url}/api/v0/searches",
+-                headers=headers,
+                 json={"searchText": query}
+             )
+ 
+@@ -750,9 +779,10 @@ def _run_slskd_search(query: str, timeout_secs: int) -> list[dict]:
+             while time.time() - start_time < timeout_secs:
+                 time.sleep(1)
+ 
+-                status_response = client.get(
++                status_response = _slskd_request(
++                    client,
++                    "get",
+                     f"{slskd_url}/api/v0/searches/{search_id}",
+-                    headers=headers
+                 )
+ 
+                 if status_response.status_code == 200:
+@@ -775,9 +805,10 @@ def _run_slskd_search(query: str, timeout_secs: int) -> list[dict]:
+             responses = []
+             responses_deadline = time.time() + max(10, min(20, timeout_secs))
+             while time.time() < responses_deadline:
+-                responses_response = client.get(
++                responses_response = _slskd_request(
++                    client,
++                    "get",
+                     f"{slskd_url}/api/v0/searches/{search_id}/responses",
+-                    headers=headers
+                 )
+                 if responses_response.status_code == 200:
+                     responses = responses_response.json()
+@@ -789,7 +820,11 @@ def _run_slskd_search(query: str, timeout_secs: int) -> list[dict]:
+ 
+             # Clean up search
+             try:
+-                client.delete(f"{slskd_url}/api/v0/searches/{search_id}", headers=headers)
++                _slskd_request(
++                    client,
++                    "delete",
++                    f"{slskd_url}/api/v0/searches/{search_id}",
++                )
+             except Exception:
+                 pass
+ 
+@@ -1176,8 +1211,6 @@ def download_from_slskd(username: str, filename: str, dest_dir: Path, timeout_se
+     slskd_url = get_setting("slskd_url")
+     slskd_downloads_path = get_setting("slskd_downloads_path")
+ 
+-    headers = {"Authorization": f"Bearer {token}"}
+-
+     # Extract just the filename from the full path
+     target_norm = normalize_slskd_path(filename)
+     source_filename = Path(target_norm).name
+@@ -1205,9 +1238,10 @@ def download_from_slskd(username: str, filename: str, dest_dir: Path, timeout_se
+             if size is not None:
+                 queue_item["size"] = int(size)
+ 
+-            enqueue_response = client.post(
++            enqueue_response = _slskd_request(
++                client,
++                "post",
+                 f"{slskd_url}/api/v0/transfers/downloads/{username}",
+-                headers=headers,
+                 json=[queue_item]
+             )
+ 
+@@ -1236,9 +1270,10 @@ def download_from_slskd(username: str, filename: str, dest_dir: Path, timeout_se
+                 time.sleep(5)
+ 
+                 # Get download status for this user
+-                status_response = client.get(
++                status_response = _slskd_request(
++                    client,
++                    "get",
+                     f"{slskd_url}/api/v0/transfers/downloads/{username}",
+-                    headers=headers
+                 )
+ 
+                 if status_response.status_code != 200:
+@@ -1290,9 +1325,10 @@ def download_from_slskd(username: str, filename: str, dest_dir: Path, timeout_se
+                             time.sleep(2)  # Brief pause before re-queue
+ 
+                             # Re-enqueue the download
+-                            requeue_response = client.post(
++                            requeue_response = _slskd_request(
++                                client,
++                                "post",
+                                 f"{slskd_url}/api/v0/transfers/downloads/{username}",
+-                                headers=headers,
+                                 json=[queue_item]
+                             )
+                             if requeue_response.status_code not in [200, 201]:
+@@ -1320,9 +1356,10 @@ def download_from_slskd(username: str, filename: str, dest_dir: Path, timeout_se
+                 # removed or the user went offline - try re-queuing once
+                 if not file_found and last_state and "queue" not in last_state.lower():
+                     print("slskd: File no longer in transfer queue, attempting re-queue...")
+-                    requeue_response = client.post(
++                    requeue_response = _slskd_request(
++                        client,
++                        "post",
+                         f"{slskd_url}/api/v0/transfers/downloads/{username}",
+-                        headers=headers,
+                         json=[queue_item]
+                     )
+                     if requeue_response.status_code in [200, 201]:
