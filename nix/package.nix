@@ -225,7 +225,10 @@
           rev = "b40c71d5be3951ecf9c4a208b2cbeddd5ec089e9";
           hash = "sha256-MwOw4/vvPmWaOMIb3HHNQVJMJFm5rkSa30X2SU24RCg=";
         };
-        patches = [ (projectRoot + "/patches/native-package.patch") ];
+        patches = [
+          (projectRoot + "/patches/native-package.patch")
+          (projectRoot + "/patches/slskd-reauth.patch")
+        ];
         installPhase = ''
           runHook preInstall
           rm -f constants.py.orig
